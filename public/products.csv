@@ -1,4 +1,4 @@
-product_id,product_name,category,price,cost,launched_date
+﻿product_id,product_name,category,price,cost,launched_date
 P001,อเมริกาโน่ร้อน,กาแฟ,55,14,2023-06-01
 P002,อเมริกาโน่เย็น,กาแฟ,65,17,2023-06-01
 P003,ลาเต้ร้อน,กาแฟ,65,20,2023-06-01
