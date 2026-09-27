@@ -1,12 +1,14 @@
-import { Bar, BarChart, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { formatBaht } from '../lib/metrics'
 import ChartTooltip from './ChartTooltip'
 import useIsMobile from '../hooks/useIsMobile'
 
 const COLOR = '#2563eb'
+const FADED = '#bfdbfe' // สาขาที่ไม่ได้เลือกในตัวกรอง
 
 // แท่งแนวนอน: อ่านชื่อสาขาภาษาไทยง่ายกว่า ข้อมูลเรียงมากไปน้อยมาแล้วจาก metrics.js
-function BranchSalesChart({ data }) {
+// highlight = ชื่อสาขาที่เลือก ('all' = ทุกแท่งสีปกติ)
+function BranchSalesChart({ data, highlight = 'all' }) {
   const isMobile = useIsMobile()
   const rowHeight = isMobile ? 44 : 52
 
@@ -29,6 +31,9 @@ function BranchSalesChart({ data }) {
         />
         <Tooltip content={<ChartTooltip />} cursor={{ fill: '#eff6ff' }} />
         <Bar dataKey="sales" fill={COLOR} radius={[0, 4, 4, 0]} isAnimationActive={false}>
+          {data.map((d) => (
+            <Cell key={d.branch} fill={highlight === 'all' || highlight === d.branch ? COLOR : FADED} />
+          ))}
           <LabelList
             dataKey="sales"
             position="right"

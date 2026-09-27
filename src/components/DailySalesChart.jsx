@@ -18,9 +18,12 @@ function LegendItem({ color, opacity = 1, width, label }) {
 
 function DailySalesChart({ data }) {
   const isMobile = useIsMobile()
-  // ขีดแกน X ที่วันแรกของทุก 2 เดือน เพื่อไม่ให้ป้ายชนกัน
+  // ขีดแกน X ปรับตามช่วงที่กรอง: ช่วงยาวใช้วันที่ 1 ของเดือน (เว้นเดือนถ้าเยอะ) ช่วงสั้นกระจายราว 6 ขีดเท่า ๆ กัน
   const firstDays = data.filter((d) => d.date.endsWith('-01')).map((d) => d.date)
-  const ticks = firstDays.filter((_, i) => i % 2 === 0)
+  const ticks =
+    firstDays.length >= 4
+      ? firstDays.filter((_, i) => i % Math.ceil(firstDays.length / 9) === 0)
+      : data.filter((_, i) => i % Math.max(1, Math.ceil(data.length / 6)) === 0).map((d) => d.date)
 
   return (
     <>

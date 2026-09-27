@@ -82,6 +82,111 @@ export function salesByBranch(rows) {
     .sort((a, b) => b.sales - a.sales)
 }
 
+// ---------- จำนวนบิลตามชั่วโมง ----------
+
+// ชั่วโมงตามเวลาไทย: ตัวที่ 12–13 ของ datetime (เช่น "2025-04-01T18:48:40+07:00" → 18)
+// อ่านจากสตริงตรง ๆ เหมือน thaiDate เพื่อไม่ให้เขตเวลาของเครื่องผู้ชมมีผล
+export function thaiHour(datetime) {
+  return Number(datetime.slice(11, 13))
+}
+
+// ช่วงชั่วโมงที่มีการขาย (ใช้กำหนดแกน X ให้ทุกกราฟเท่ากัน)
+export function hourRange(rows) {
+  let min = 23
+  let max = 0
+  for (const r of rows) {
+    const h = thaiHour(r.datetime)
+    if (h < min) min = h
+    if (h > max) max = h
+  }
+  return { min, max }
+}
+
+// จำนวนบิลต่อชั่วโมง: นับ order_id ไม่ซ้ำ (บิลหนึ่งมีหลายแถวแต่เวลาเดียวกัน จึงนับครั้งเดียว)
+// คืนครบทุกชั่วโมงในช่วง แม้ชั่วโมงนั้นไม่มีบิล (orders = 0) เพื่อให้แท่งเรียงตรงกันทุกกราฟ
+export function ordersByHour(rows, { min, max }) {
+  const seen = new Set()
+  const counts = new Map()
+  for (const r of rows) {
+    if (seen.has(r.orderId)) continue
+    seen.add(r.orderId)
+    const h = thaiHour(r.datetime)
+    counts.set(h, (counts.get(h) ?? 0) + 1)
+  }
+  const out = []
+  for (let h = min; h <= max; h++) out.push({ hour: h, orders: counts.get(h) ?? 0 })
+  return out
+}
+
+// จำนวนวันที่มียอดขายจริง (ใช้เป็นตัวหารของ "เฉลี่ยต่อวัน")
+export function activeDays(rows) {
+  return new Set(rows.map((r) => thaiDate(r.datetime))).size
+}
+
+// จำนวนบิลต่อชั่วโมงแยกสาขา
+// perDay = true → หารด้วยจำนวนวันที่สาขานั้นเปิดขาย เพื่อเทียบสาขาที่เปิดไม่นานเท่ากันได้ยุติธรรม
+export function ordersByHourByBranch(rows, branches, hours, { perDay = false } = {}) {
+  return branches.map((branch) => {
+    const branchRows = rows.filter((r) => r.branch === branch)
+    const days = activeDays(branchRows)
+    const data = ordersByHour(branchRows, hours).map((d) => ({
+      ...d,
+      orders: perDay ? (days ? d.orders / days : 0) : d.orders,
+    }))
+    return { branch, days, data, peak: peakHour(data) }
+  })
+}
+
+// ชั่วโมงที่มีบิลมากที่สุด (ถ้าเท่ากันเอาชั่วโมงแรก) · null ถ้าไม่มีบิลเลย
+export function peakHour(hourly) {
+  let best = null
+  for (const d of hourly) if (d.orders > 0 && (!best || d.orders > best.orders)) best = d
+  return best
+}
+
+// ป้ายชั่วโมง เช่น 8 → "08:00"
+export function formatHour(h) {
+  return `${String(h).padStart(2, '0')}:00`
+}
+
+// ---------- ตัวกรอง ----------
+
+// ช่วงวันที่ที่มีข้อมูล: วันแรกและวันสุดท้าย (YYYY-MM-DD)
+export function dateBounds(rows) {
+  let min = null
+  let max = null
+  for (const r of rows) {
+    const day = thaiDate(r.datetime)
+    if (min === null || day < min) min = day
+    if (max === null || day > max) max = day
+  }
+  return { min, max }
+}
+
+// รายชื่อสาขาทั้งหมด เรียงตามยอดขายมากไปน้อย (ลำดับเดียวกับกราฟแท่ง)
+export function branchList(rows) {
+  return salesByBranch(rows).map((b) => b.branch)
+}
+
+// เลื่อนวันที่ไป n วัน (ติดลบ = ย้อนหลัง) คำนวณแบบ UTC เพื่อไม่ให้เขตเวลาของเครื่องมีผล
+export function addDays(isoDate, n) {
+  const d = new Date(`${isoDate}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+// กรองแถวตามสาขาและช่วงวันที่ (รวมวันแรกและวันสุดท้าย)
+// branch = 'all' หมายถึงทุกสาขา · เทียบวันที่เป็นสตริง YYYY-MM-DD ได้เลยเพราะเรียงตามตัวอักษรตรงกับลำดับเวลา
+export function filterRows(rows, { branch = 'all', from = null, to = null } = {}) {
+  return rows.filter((r) => {
+    if (branch !== 'all' && r.branch !== branch) return false
+    const day = thaiDate(r.datetime)
+    if (from && day < from) return false
+    if (to && day > to) return false
+    return true
+  })
+}
+
 // ---------- การจัดรูปแบบตัวเลข ----------
 
 const intFormat = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 0 })
@@ -100,10 +205,10 @@ export function formatBaht(n, { decimals = false } = {}) {
   return '฿' + (decimals ? moneyFormat : intFormat).format(n)
 }
 
-// แกนกราฟแบบย่อ เช่น ฿12K, ฿1.2M
+// แกนกราฟแบบย่อ เช่น ฿1.5K, ฿12K, ฿1.2M (ต่ำกว่า 10K เก็บทศนิยม 1 ตำแหน่ง กันป้ายซ้ำกัน)
 export function formatBahtCompact(n) {
   if (n >= 1_000_000) return `฿${+(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `฿${+(n / 1_000).toFixed(0)}K`
+  if (n >= 1_000) return `฿${+(n / 1_000).toFixed(n < 10_000 ? 1 : 0)}K`
   return `฿${n}`
 }
 
