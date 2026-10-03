@@ -1,0 +1,90 @@
+rules_version = '2';
+
+// Lab 3.3 · Security Rules ของบ้านบรู (Prompt 3.3B)
+// หลักคิด: web config อยู่ในหน้าเว็บให้ทุกคนเห็น ใครก็ส่งคำขอตรงมาที่ Firestore ได้โดยไม่ผ่านฟอร์ม
+// การตรวจในฟอร์ม (validateSaleForm) จึงกันได้แค่ผู้ใช้ปกติ ส่วน rules คือด่านจริงที่ฝั่งเซิร์ฟเวอร์
+// เอกสารยอดขายที่สร้างได้ต้องหน้าตาเหมือนที่ buildSale() ใน src/lab3/saleModel.js สร้างทุกประการ
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ล็อกอินแล้วหรือยัง (request.auth เป็น null ถ้ายังไม่ล็อกอิน)
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // ---------- เมนูและสาขา ----------
+    // อ่านได้เมื่อล็อกอิน (ฟอร์มต้องใช้รายการเมนูและราคา)
+    // เขียนไม่ได้เลยจากหน้าเว็บ แก้ได้เฉพาะสคริปต์ seed ที่ใช้ service account (ข้าม rules)
+    // ถ้าเปิดให้เขียน คนร้ายจะแก้ราคาในเมนูก่อน แล้วค่อยบันทึกยอดขายราคาถูกให้ผ่านการตรวจราคาด้านล่าง
+    match /products/{productId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /branches/{branchId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // ---------- ยอดขาย ----------
+    match /sales/{saleId} {
+      // อ่านได้เมื่อล็อกอิน (Dashboard ใช้ onSnapshot)
+      allow read: if signedIn();
+
+      // บันทึกยอดขายใหม่ได้เมื่อล็อกอิน และข้อมูลผ่านการตรวจทุกข้อใน validSale()
+      allow create: if signedIn() && validSale(request.resource.data);
+
+      // ยอดขายที่บันทึกแล้วแก้หรือลบไม่ได้ (เหมือนใบเสร็จ) ป้องกันการแก้ตัวเลขย้อนหลัง
+      allow update, delete: if false;
+    }
+
+    // ฟิลด์ที่ buildSale() สร้าง + created_at ที่ฟอร์มเติมตอนบันทึก
+    function saleFields() {
+      return ["order_id", "datetime", "date", "hour", "branch", "product_id", "qty", "unit_price",
+              "revenue", "customer_id", "payment_method", "channel", "source", "created_by", "created_at"];
+    }
+
+    function validSale(d) {
+      // ฟิลด์ต้องครบ (hasAll) และห้ามมีฟิลด์เกิน (hasOnly) เช่น แอบเพิ่ม discount
+      return d.keys().hasAll(saleFields()) && d.keys().hasOnly(saleFields())
+
+        // ต้องมาจากเว็บ และผู้บันทึกต้องเป็นคนที่ล็อกอินอยู่จริง (ห้ามปลอมเป็น uid คนอื่น)
+        && d.source == "web"
+        && d.created_by == request.auth.uid
+
+        // เวลาบันทึกต้องเป็นเวลาของเซิร์ฟเวอร์ (serverTimestamp()) ห้ามใส่เวลาเอง
+        && d.created_at == request.time
+
+        // เลขบิลและรหัสเมนูต้องเป็นข้อความ
+        && d.order_id is string && d.order_id.size() > 0
+        && d.product_id is string
+
+        // สาขาต้องเป็น 1 ใน 5 สาขาจริง และวิธีชำระเงินต้องเป็น 1 ใน 5 แบบที่ร้านรับ
+        && d.branch in ["สยาม", "สีลม", "อารีย์", "บางนา", "มหาวิทยาลัย"]
+        && d.payment_method in ["QR พร้อมเพย์", "บัตรเครดิต", "เงินสด", "LINE MAN", "Grab"]
+
+        // ช่องทางต้องสอดคล้องกับวิธีชำระเงิน แบบเดียวกับ buildSale(): LINE MAN/Grab = เดลิเวอรี
+        && d.channel in ["หน้าร้าน", "เดลิเวอรี"]
+        && (d.payment_method in ["LINE MAN", "Grab"]) == (d.channel == "เดลิเวอรี")
+
+        // จำนวนต้องเป็นจำนวนเต็ม 1–20 (กันจำนวนติดลบ ทศนิยม หรือสั่งเยอะผิดปกติ)
+        && d.qty is int && d.qty >= 1 && d.qty <= 20
+
+        // ชั่วโมงต้องเป็นจำนวนเต็ม 0–23
+        && d.hour is int && d.hour >= 0 && d.hour <= 23
+
+        // ราคาต่อหน่วยต้องเท่ากับราคาในเมนูจริง (อ่าน products/{product_id} ด้วย get())
+        // ถ้ารหัสเมนูไม่มีอยู่จริง get() จะล้มเหลวและคำขอถูกปฏิเสธเอง
+        && d.unit_price == get(/databases/$(database)/documents/products/$(d.product_id)).data.price
+
+        // ยอดรวมต้องคำนวณถูก ห้ามส่งตัวเลขยอดขายมาเอง
+        && d.revenue == d.qty * d.unit_price
+
+        // วันที่และเวลาต้องเป็นรูปแบบเวลาไทยแบบเดียวกับข้อมูลที่นำเข้า
+        && d.date is string && d.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && d.datetime is string && d.datetime.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+]07:00$')
+
+        // รหัสสมาชิกว่างได้ (null = ลูกค้าทั่วไป) ถ้ามีต้องเป็น C ตามด้วยเลข 5 หลัก
+        && (d.customer_id == null || (d.customer_id is string && d.customer_id.matches('^C[0-9]{5}$')));
+    }
+  }
+}

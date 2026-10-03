@@ -20,7 +20,7 @@ function Field({ label, error, children }) {
 
 const inputClass = "mt-1 w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-sm";
 
-export default function SaleForm({ products }) {
+export default function SaleForm({ products, uid }) {
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -38,8 +38,8 @@ export default function SaleForm({ products }) {
     setResult(null);
     if (Object.keys(found).length) return;
 
-    // uid "anonymous" ชั่วคราว · Lab 3.3 จะเปลี่ยนเป็นผู้ใช้ที่ล็อกอิน
-    const { id, data } = buildSale(form, product, { uid: "anonymous" });
+    // created_by = uid ของผู้ใช้ที่ล็อกอิน (Lab 3.3) · Security Rules ใช้ตรวจว่าไม่ได้ปลอมตัวเป็นคนอื่น
+    const { id, data } = buildSale(form, product, { uid });
     setSaving(true);
     try {
       await setDoc(doc(db, "sales", id), { ...data, created_at: serverTimestamp() });

@@ -1,11 +1,13 @@
 // Lab 3.2 · Dashboard ยอดขายแบบ real-time จาก Firestore (Prompt 3.2B)
 // ฟัง collection "sales" ด้วย onSnapshot ตามช่วงวันที่ · กรองสาขาฝั่งเบราว์เซอร์
+// Lab 3.3 · ต้องล็อกอินด้วย Google ก่อน (Prompt 3.3A) · ยังไม่ล็อกอินจะไม่เริ่ม onSnapshot เลย
 import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, getDocs, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import {
   Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { db, projectId } from "./firebase.js";
+import { auth, db, googleProvider, projectId } from "./firebase.js";
 import { addDays, todayBangkok } from "./time.js";
 import { BRANCHES } from "./saleModel.js";
 import SaleForm from "./SaleForm.jsx";
@@ -32,7 +34,72 @@ const errorText = (e) =>
       ? "เชื่อมต่อ Firestore ไม่ได้ ตรวจสอบอินเทอร์เน็ต"
       : `อ่านข้อมูลไม่สำเร็จ: ${e.message}`;
 
+const AUTH_ERRORS = {
+  "auth/unauthorized-domain": "โดเมนนี้ยังไม่ได้รับอนุญาตให้ล็อกอิน เพิ่มใน Firebase console → Authentication → Settings → Authorized domains",
+  "auth/operation-not-allowed": "ยังไม่ได้เปิดล็อกอินด้วย Google ใน Firebase console → Authentication → Sign-in method",
+  "auth/popup-blocked": "เบราว์เซอร์บล็อกหน้าต่างล็อกอิน อนุญาตป๊อปอัปสำหรับเว็บนี้แล้วลองอีกครั้ง",
+  "auth/popup-closed-by-user": "ปิดหน้าต่างล็อกอินก่อนเสร็จ ลองกดเข้าสู่ระบบอีกครั้ง",
+};
+const authErrorText = (e) => AUTH_ERRORS[e.code] ?? `เข้าสู่ระบบไม่สำเร็จ: ${e.message}`;
+
 export default function LiveTab() {
+  const [user, setUser] = useState(undefined); // undefined = กำลังตรวจ · null = ยังไม่ล็อกอิน
+  const [authError, setAuthError] = useState(null);
+  const [signingIn, setSigningIn] = useState(false);
+
+  useEffect(() => onAuthStateChanged(auth, setUser), []);
+
+  async function signIn() {
+    setAuthError(null);
+    setSigningIn(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (e) {
+      setAuthError(authErrorText(e));
+    } finally {
+      setSigningIn(false);
+    }
+  }
+
+  if (user === undefined) return <p className="text-stone-500">กำลังตรวจสอบการเข้าสู่ระบบ…</p>;
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-md rounded-xl border border-blue-100 bg-white p-6 text-center shadow-sm">
+        <h1 className="text-xl font-bold text-blue-800">ยอดขายสด</h1>
+        <p className="mt-2 text-sm text-stone-600">เข้าสู่ระบบก่อนดูยอดขายและบันทึกบิล</p>
+        <button onClick={signIn} disabled={signingIn}
+          className="mt-5 inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-4 py-2 font-medium text-stone-800 hover:bg-blue-50 disabled:opacity-60">
+          <svg viewBox="0 0 48 48" className="h-5 w-5" aria-hidden="true">
+            <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.2l7.8 6.1C12.3 13.4 17.7 9.5 24 9.5z" />
+            <path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17.1z" />
+            <path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.8-6.1C1 16.5 0 20.1 0 24s1 7.5 2.6 10.8l7.8-6.1z" />
+            <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.3 0-11.7-3.9-13.6-9.8l-7.8 6.1C6.6 42.6 14.6 48 24 48z" />
+          </svg>
+          {signingIn ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบด้วย Google"}
+        </button>
+        {authError && <p className="mt-4 text-sm text-red-700">{authError}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-end gap-3">
+        {user.photoURL && <img src={user.photoURL} alt="" referrerPolicy="no-referrer" className="h-8 w-8 rounded-full" />}
+        <span className="text-sm text-stone-700">{user.displayName ?? user.email}</span>
+        <button onClick={() => signOut(auth)}
+          className="rounded-lg border border-blue-100 bg-white px-3 py-1.5 text-sm text-stone-700 hover:bg-blue-50">
+          ออกจากระบบ
+        </button>
+      </div>
+      {/* key = uid: เปลี่ยนผู้ใช้แล้วเริ่ม Dashboard ใหม่ทั้งหมด ตัวนับและไฮไลต์ไม่ปนกัน */}
+      <LiveDashboard key={user.uid} user={user} />
+    </div>
+  );
+}
+
+function LiveDashboard({ user }) {
   const [rangeId, setRangeId] = useState("7d");
   const [branch, setBranch] = useState("all");
   const [docs, setDocs] = useState(null);
@@ -217,7 +284,7 @@ export default function LiveTab() {
         </div>
 
         <aside>
-          <SaleForm products={products} />
+          <SaleForm products={products} uid={user.uid} />
         </aside>
       </div>
     </div>
