@@ -250,6 +250,39 @@ export function dailyRevenue(rows) {
     .map(([date, revenue]) => ({ date, revenue }))
 }
 
+// KPI 4 ตัว จากแถวของ prepareRows (ใช้ในแท็บสด · Lab 3.2)
+export function computeKpis(rows) {
+  const revenue = rows.reduce((sum, r) => sum + r.revenue, 0)
+  const bills = new Set(rows.map((r) => r.order_id)).size // นับบิล ไม่ใช่นับแถว
+  // customer_id ว่างหรือ null = ลูกค้าทั่วไป ไม่นับเป็นสมาชิก
+  const customers = new Set(rows.map((r) => r.customer_id).filter(Boolean)).size
+  return { revenue, bills, avgPerBill: bills ? revenue / bills : 0, customers }
+}
+
+// ยอดขายแยกสาขา เรียงจากมากไปน้อย
+export function revenueByBranch(rows) {
+  const map = new Map()
+  for (const r of rows) {
+    const cur = map.get(r.branch) ?? { branch: r.branch, revenue: 0, bills: new Set() }
+    cur.revenue += r.revenue
+    cur.bills.add(r.order_id)
+    map.set(r.branch, cur)
+  }
+  return [...map.values()]
+    .map((b) => ({ branch: b.branch, revenue: b.revenue, bills: b.bills.size }))
+    .sort((a, b) => b.revenue - a.revenue)
+}
+
+// ยอดขายรายชั่วโมง (เวลาไทยจาก r.hour) · แสดงอย่างน้อย 7:00–20:00 ขยายถ้ามียอดนอกช่วง · ไม่มียอดเลย = []
+export function revenueByHour(rows) {
+  const hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, revenue: 0 }))
+  for (const r of rows) hourly[r.hour].revenue += r.revenue
+  const first = hourly.findIndex((h) => h.revenue > 0)
+  if (first < 0) return []
+  const last = hourly.findLastIndex((h) => h.revenue > 0)
+  return hourly.slice(Math.min(first, 7), Math.max(last, 20) + 1)
+}
+
 export const fmtBaht = (n) => '฿' + n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
 
 export const fmtShortBaht = (n) =>

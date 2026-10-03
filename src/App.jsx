@@ -3,12 +3,16 @@ import Papa from 'papaparse'
 import Lab1Dashboard from './Lab1Dashboard'
 import Lab2Page from './lab2/Lab2Page'
 import CustomersPage, { prepareCustomers } from './customers/CustomersPage'
+import LiveTab from './lab3/LiveTab'
+import SetupGuide from './lab3/SetupGuide'
+import { isConfigured } from './lab3/firebase'
 import { prepareRows } from './lib/metrics'
 
 const TABS = [
   { id: 'lab1', label: 'Dashboard' },
   { id: 'lab22', label: 'Lab 2.2 · ซ่อมกราฟ' },
   { id: 'customers', label: 'ลูกค้าสมาชิก' },
+  { id: 'live', label: 'สด · Firestore' },
 ]
 
 const loadCsv = (url) =>
@@ -57,6 +61,11 @@ function App() {
       {tab === 'customers' && (
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
           <Customers />
+        </div>
+      )}
+      {tab === 'live' && (
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+          {isConfigured ? <LiveTab /> : <SetupGuide />}
         </div>
       )}
     </div>
