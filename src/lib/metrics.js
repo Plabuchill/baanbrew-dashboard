@@ -219,3 +219,38 @@ export function formatThaiDate(isoDate, { withDay = true } = {}) {
   const yy = String((y + 543) % 100).padStart(2, '0')
   return withDay ? `${d} ${TH_MONTHS[m - 1]} ${yy}` : `${TH_MONTHS[m - 1]} ${yy}`
 }
+
+// ---- ใช้กับหน้า Lab 2.2 (src/lab2) ----
+
+// แปลงแถวดิบเป็นแถวที่มี revenue, date, hour พร้อมใช้ในกราฟ Lab 2.2
+export function prepareRows(rawRows) {
+  return rawRows
+    .filter((r) => r.order_id)
+    .map((r) => {
+      const qty = Number(r.qty)
+      const unitPrice = Number(r.unit_price)
+      return {
+        ...r,
+        branch: r.branch.trim(),
+        qty,
+        unitPrice,
+        revenue: qty * unitPrice,
+        // ใช้ 10 ตัวอักษรแรกของ ISO string (เวลาไทย) ไม่แปลงเป็น UTC
+        date: r.datetime.slice(0, 10),
+        hour: Number(r.datetime.slice(11, 13)),
+      }
+    })
+}
+
+export function dailyRevenue(rows) {
+  const map = new Map()
+  for (const r of rows) map.set(r.date, (map.get(r.date) ?? 0) + r.revenue)
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, revenue]) => ({ date, revenue }))
+}
+
+export const fmtBaht = (n) => '฿' + n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
+
+export const fmtShortBaht = (n) =>
+  n >= 1_000_000 ? `฿${(n / 1_000_000).toFixed(1)} ล.` : n >= 1000 ? `฿${(n / 1000).toFixed(0)}k` : `฿${n}`
