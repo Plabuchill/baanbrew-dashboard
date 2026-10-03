@@ -6,7 +6,7 @@ import CustomersPage, { prepareCustomers } from './customers/CustomersPage'
 import { prepareRows } from './lib/metrics'
 
 const TABS = [
-  { id: 'lab1', label: 'Lab 1 · Dashboard' },
+  { id: 'lab1', label: 'Dashboard' },
   { id: 'lab22', label: 'Lab 2.2 · ซ่อมกราฟ' },
   { id: 'customers', label: 'ลูกค้าสมาชิก' },
 ]
