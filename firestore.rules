@@ -25,6 +25,15 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ---------- ผลวิเคราะห์ (Lab 4.2C) ----------
+    // อ่านได้เมื่อล็อกอิน (มีรหัสลูกค้าและยอดซื้อรายคน จึงไม่เปิดให้คนนอกอ่าน)
+    // เขียนไม่ได้จากหน้าเว็บ: pipeline (scripts/build-analytics.mjs) ใช้ firebase-admin ซึ่งข้าม rules
+    // ถ้าเปิดให้เขียน ใครก็ปลอมตัวเลข RFM/พยากรณ์ให้เจ้าของร้านตัดสินใจผิดได้
+    match /analytics/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     // ---------- ยอดขาย ----------
     match /sales/{saleId} {
       // อ่านได้เมื่อล็อกอิน (Dashboard ใช้ onSnapshot)

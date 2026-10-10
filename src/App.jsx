@@ -6,6 +6,9 @@ import CustomersPage, { prepareCustomers } from './customers/CustomersPage'
 import LiveTab from './lab3/LiveTab'
 import RulesTester from './lab3/RulesTester'
 import SetupGuide from './lab3/SetupGuide'
+import CustomersTab from './lab4/CustomersTab'
+import ForecastTab from './lab4/ForecastTab'
+import { firestoreAnalyticsSource, createDemoAnalyticsSource } from './lab4/analyticsSource'
 import { isConfigured } from './lab3/firebase'
 import { prepareRows } from './lib/metrics'
 
@@ -14,8 +17,13 @@ const TABS = [
   { id: 'lab22', label: 'Lab 2.2 · ซ่อมกราฟ' },
   { id: 'customers', label: 'ลูกค้าสมาชิก' },
   { id: 'live', label: 'สด · Firestore' },
+  { id: 'analytics', label: 'ลูกค้า & เมนู' },
+  { id: 'forecast', label: 'พยากรณ์ & ผิดปกติ' },
   { id: 'rules', label: 'ทดสอบ Rules' },
 ]
+
+// ?demo = คำนวณผลวิเคราะห์ในเบราว์เซอร์จาก CSV (ไม่ต้องมี Firebase ไม่ใช้โควตา)
+const DEMO = new URLSearchParams(location.search).has('demo')
 
 const loadCsv = (url) =>
   new Promise((resolve, reject) =>
@@ -33,7 +41,7 @@ function App() {
 
   const choose = (id) => {
     setTab(id)
-    history.replaceState(null, '', '#' + id)
+    history.replaceState(null, '', location.search + '#' + id)
   }
 
   return (
@@ -68,6 +76,11 @@ function App() {
       {tab === 'live' && (
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
           {isConfigured ? <LiveTab /> : <SetupGuide />}
+        </div>
+      )}
+      {(tab === 'analytics' || tab === 'forecast') && (
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+          <Analytics tab={tab} />
         </div>
       )}
       {tab === 'rules' && (
@@ -109,6 +122,28 @@ function Customers() {
   if (error) return <p className="text-red-700">โหลดข้อมูลไม่สำเร็จ: {error}</p>
   if (!data) return <p className="text-stone-500">กำลังโหลดข้อมูล...</p>
   return <CustomersPage rows={data.rows} customers={data.customers} />
+}
+
+// Lab 4 · แท็บวิเคราะห์อ่าน analytics 5 เอกสารจาก Firestore · โหมดสาธิตโหลด CSV มาคำนวณเอง
+function Analytics({ tab }) {
+  const [demoSource, setDemoSource] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!DEMO) return
+    Promise.all([loadCsv('/sales.csv'), loadCsv('/products.csv'), loadCsv('/thai_holidays.csv').catch(() => [])])
+      .then(([sales, products, hol]) => {
+        const holidays = Object.fromEntries(hol.map((h) => [h.date, h.holiday]))
+        setDemoSource(createDemoAnalyticsSource(prepareRows(sales), products, holidays))
+      })
+      .catch((e) => setError(e.message ?? String(e)))
+  }, [])
+
+  if (!DEMO && !isConfigured) return <SetupGuide />
+  if (error) return <p className="text-red-700">โหลดข้อมูลไม่สำเร็จ: {error}</p>
+  const source = DEMO ? demoSource : firestoreAnalyticsSource
+  if (!source) return <p className="text-stone-500">กำลังโหลดข้อมูล...</p>
+  return tab === 'analytics' ? <CustomersTab source={source} /> : <ForecastTab source={source} />
 }
 
 export default App
